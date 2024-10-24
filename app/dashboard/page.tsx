@@ -1,16 +1,24 @@
 'use client';
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useUser } from '@auth0/nextjs-auth0/client';
 import { Clock, Users, Zap, FileText, Settings } from 'lucide-react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabaseClient';
 
-async function insertIfNotExists(table : string, data : {email : string}) {
-  const { email } = data;
+type UserData = {
+  id: string;
+  email: string;
+  name: string;
+  cost_per_hour?: number;
+  skill_level?: string;
+};
+
+async function insertIfNotExists(table: string, data: UserData) {
+  const { id, email, name, cost_per_hour = 0, skill_level = 'N/A' } = data;
   const { data: existingRow, error } = await supabase
     .from(table)
     .select('*')
-    .eq('email', email) 
+    .eq('id', id)
     .limit(1)
 
   if (error) {
@@ -20,12 +28,12 @@ async function insertIfNotExists(table : string, data : {email : string}) {
 
   if (existingRow.length > 0) {
     console.log('Data already exists. No need to insert.')
-    return false 
+    return false
   }
 
   const { data: newData, error: insertError } = await supabase
     .from(table)
-    .insert([data]) 
+    .insert([{ id, email, name, cost_per_hour, skill_level }])
 
   if (insertError) {
     console.error('Error inserting data:', insertError)
@@ -33,11 +41,33 @@ async function insertIfNotExists(table : string, data : {email : string}) {
   }
 
   console.log('Data inserted successfully:', newData)
-  return true // Insert was successful
+  return true
 }
 
-const DashboardPage = async () => {
+
+const DashboardPage = () => {
   const { user, error, isLoading } = useUser();
+
+  useEffect(() => {
+    const addUserToDatabase = async () => {
+      if (user && user.email && user.sub) {
+        const newUser: UserData = {
+          id: user.sub,
+          email: user.email,
+          name: user.name || user.nickname || 'User',
+        };
+        
+        const success = await insertIfNotExists('users', newUser);
+        if (success) {
+          console.log('User added to the database.');
+        } else {
+          console.log('User already exists.');
+        }
+      }
+    };
+
+    addUserToDatabase();
+  }, [user]);
 
   if (isLoading) return <span className='loading loading-spinner loading-md'></span>;
   if (error) return <div>{error.message}</div>;
@@ -56,36 +86,34 @@ const DashboardPage = async () => {
     );
   }
 
-  const newUser = { email: user.email + ""}
-    insertIfNotExists('users', newUser)
-    .then(success => {
-        if (success) {
-        console.log('User added to the database.')
-        } else {
-        console.log('User already exists.')
-        }
-    })
-
   return (
     <div className="min-h-screen bg-base-200">
       <main className="container mx-auto px-4 py-8">
-        <h1 className="text-3xl font-bold text-primary mb-8">Welcome, {user.nickname}!</h1>
+        <h1 className="text-3xl font-bold text-primary mb-8">
+          Welcome, {user.name || user.nickname || 'User'}!
+        </h1>
 
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
           {[
-            { icon: Clock, title: "Recent Estimates", description: "View and manage your recent project estimates" },
-            { icon: Users, title: "Resource Management", description: "Mangage your people and historic data" },
+            { icon: FileText, title: "Create Project", description: "Start a new project estimation", link: "/dashboard/createProject" },
+            { icon: Users, title: "Teams", description: "Create and view teams", link: "/dashboard/teams" },
             { icon: Zap, title: "AI Insights", description: "Get AI-powered insights for your projects" },
-            { icon: FileText, title: "Reports", description: "Generate and view estimation reports" },
+            { icon: FileText, title: "Reports", description: "View old estimation reports" },
             { icon: Settings, title: "Settings", description: "Customize your dashboard and preferences" },
           ].map((item, index) => (
             <div key={index} className="card bg-base-100 shadow-xl hover:shadow-2xl transition-shadow">
-              <div className="card-body">
-                <item.icon className="h-12 w-12 text-primary mb-4" />
-                <h2 className="card-title">{item.title}</h2>
+              <div className="card-body text-center">
+                <item.icon className="h-12 w-12 text-primary mb-4 mx-auto" />
+                <h2 className="card-title justify-center">{item.title}</h2>
                 <p>{item.description}</p>
-                <div className="card-actions justify-end mt-4">
-                  <button className="btn btn-primary">View</button>
+                <div className="card-actions justify-center mt-4">
+                  {item.link ? (
+                    <Link href={item.link} className="btn btn-primary">
+                      View
+                    </Link>
+                  ) : (
+                    <button className="btn btn-primary">View</button>
+                  )}
                 </div>
               </div>
             </div>
